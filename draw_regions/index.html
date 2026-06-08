@@ -22,6 +22,7 @@
 
         .main-panel {
             flex: 2;
+            min-width: 0; /* prevent flex item from growing beyond allocation */
             background: white;
             padding: 20px;
             border-radius: 8px;
@@ -94,6 +95,7 @@
         .canvas-wrapper {
             position: relative;
             overflow: auto;
+            width: 100%;
             max-height: 80vh;
             border: 1px solid #ddd;
             background-image: repeating-linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee), repeating-linear-gradient(45deg, #eee 25%, #fff 25%, #fff 75%, #eee 75%, #eee);
@@ -231,7 +233,9 @@
             <p class="help-text" id="status-text">Active Mode: Camera ROI</p>
 
             <div class="canvas-wrapper">
-                <canvas id="canvas"></canvas>
+                <div id="canvas-zoom-box">
+                    <canvas id="canvas"></canvas>
+                </div>
             </div>
 
             <div class="legend">
@@ -250,10 +254,17 @@
             </div>
 
             <div class="card" style="margin-top: 20px;">
-                <h3>Configuration Output</h3>
-                <textarea id="output" readonly style="height: 200px;"></textarea>
-                <button class="btn btn-primary" style="width: 100%; margin-top: 10px;" onclick="copyOutput()">📋 Copy to
-                    Clipboard</button>
+                <h3>Globals</h3>
+                <textarea id="output-globals" style="height: 120px;"></textarea>
+                <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" onclick="parseZones()">&#9881; Parse Digit &amp; Analog Zones</button>
+            </div>
+            <div class="card" style="margin-top: 10px;">
+                <h3>esp32_camera_utils</h3>
+                <textarea id="output-camera" style="height: 200px;"></textarea>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button class="btn btn-primary" style="flex: 1;" onclick="parseOutput()">&#9881; Parse</button>
+                    <button class="btn btn-secondary" style="flex: 1;" onclick="copyOutput()">&#128203; Copy All</button>
+                </div>
             </div>
         </div>
 
@@ -344,6 +355,39 @@
                 </div>
             </div>
 
+            <!-- DIGIT EDIT -->
+            <div id="card-digit-edit" class="card" style="display:none;">
+                <h3>Digit Zones</h3>
+                <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
+                    <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
+                        <label style="font-size:0.85em;">Count:</label>
+                        <input type="number" id="gen-count" value="8" min="1" max="32" style="width: 48px; padding: 3px;">
+                        <label style="font-size:0.85em;">Gap:</label>
+                        <input type="number" id="gen-gap" value="0" min="0" style="width: 44px; padding: 3px;">
+                    </div>
+                    <div style="display: flex; gap: 5px;">
+                        <button class="btn btn-primary" style="flex:1; font-size:0.85em; padding:5px;" onclick="generateZones('col')">&#247; Columns</button>
+                        <button class="btn btn-secondary" style="flex:1; font-size:0.85em; padding:5px;" onclick="generateZones('row')">&#247; Rows</button>
+                    </div>
+                </div>
+                <div id="digit-all-zones" style="margin-top:4px;"></div>
+            </div>
+
+            <!-- DIAL EDIT -->
+            <div id="card-dial-edit" class="card" style="display:none;">
+                <h3>Edit Selected Dial</h3>
+                <p id="dial-edit-hint" style="color:#999; font-size:0.9em; margin:0;">Click an orange dial to select it for editing.</p>
+                <div id="dial-edit-fields" style="display:none; margin-top:10px;">
+                    <p id="dial-edit-label" style="font-size:0.85em; color:#f39c12; font-weight:bold; margin:0 0 8px 0;"></p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                        <div><label>X:</label> <input type="number" id="dial_x" oninput="updateDialFromInput()" style="width: 60px;"></div>
+                        <div><label>Y:</label> <input type="number" id="dial_y" oninput="updateDialFromInput()" style="width: 60px;"></div>
+                        <div><label>W:</label> <input type="number" id="dial_w" oninput="updateDialFromInput()" style="width: 60px;"></div>
+                        <div><label>H:</label> <input type="number" id="dial_h" oninput="updateDialFromInput()" style="width: 60px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ACTIONS -->
             <div id="card-actions-roi" class="card">
                 <h3>Actions</h3>
@@ -388,7 +432,10 @@
             isDrawing: false,
             startPos: null,
             sensorRes: { w: 1600, h: 1200, name: "OV2640 UXGA (1600x1200)" },
-            force43: false
+            force43: false,
+            selectedDigitIndex: -1,
+            selectedDialIndex: -1,
+            viewZoom: 1
         };
 
         const canvas = document.getElementById('canvas');
@@ -531,6 +578,49 @@
             container.innerHTML = content;
         }
 
+        function zoomToROI() {
+            if (!state.roi) { resetView(); return; }
+
+            const wrapper = document.querySelector('.canvas-wrapper');
+            const wrapperW = wrapper.clientWidth;
+            const wrapperH = wrapper.clientHeight;
+
+            const padX = Math.max(20, state.roi.w * 0.15);
+            const padY = Math.max(20, state.roi.h * 0.15);
+            const viewW = state.roi.w + padX * 2;
+            const viewH = state.roi.h + padY * 2;
+
+            const zoom = Math.min(wrapperW / viewW, wrapperH / viewH, 8);
+            state.viewZoom = Math.max(zoom, 0.1);
+
+            // transform: scale() doesn't affect layout; size the zoom-box explicitly
+            // so the wrapper scrollbars reflect the zoomed canvas.
+            canvas.style.transform = `scale(${state.viewZoom})`;
+            canvas.style.transformOrigin = 'top left';
+            const zoomBox = document.getElementById('canvas-zoom-box');
+            zoomBox.style.width = canvas.width * state.viewZoom + 'px';
+            zoomBox.style.height = canvas.height * state.viewZoom + 'px';
+
+            // Defer scroll so the browser has applied the zoom-box dimensions first
+            const centerX = (state.roi.x + state.roi.w / 2) * state.viewZoom;
+            const centerY = (state.roi.y + state.roi.h / 2) * state.viewZoom;
+            requestAnimationFrame(() => {
+                wrapper.scrollLeft = centerX - wrapperW / 2;
+                wrapper.scrollTop = centerY - wrapperH / 2;
+            });
+        }
+
+        function resetView() {
+            state.viewZoom = 1;
+            canvas.style.transform = '';
+            const zoomBox = document.getElementById('canvas-zoom-box');
+            zoomBox.style.width = '';
+            zoomBox.style.height = '';
+            const wrapper = document.querySelector('.canvas-wrapper');
+            wrapper.scrollLeft = 0;
+            wrapper.scrollTop = 0;
+        }
+
         function setMode(mode) {
             state.mode = mode;
             document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -550,10 +640,16 @@
             const hide = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
             const show = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'block'; };
 
+            // Clear selections on mode switch
+            state.selectedDigitIndex = -1;
+            state.selectedDialIndex = -1;
+
             // Reset all first
             hide('card-sensor-settings');
             hide('card-sensor-roi');
             hide('card-target-res');
+            hide('card-digit-edit');
+            hide('card-dial-edit');
             hide('card-actions-roi');
             hide('card-actions-digits');
             hide('card-actions-analog');
@@ -562,15 +658,21 @@
                 show('card-sensor-settings');
                 show('card-sensor-roi');
                 show('card-actions-roi');
+                resetView();
             } else if (mode === 'digits') {
                 show('card-target-res');
+                show('card-digit-edit');
                 show('card-actions-digits');
             } else if (mode === 'analog') {
                 show('card-target-res');
+                show('card-dial-edit');
                 show('card-actions-analog');
             }
 
-            updateCanvas();
+            updateCanvas(); // canvas dimensions must be set before zoom calculation
+            if (mode === 'digits' || mode === 'analog') zoomToROI();
+            else resetView();
+            if (mode === 'digits') renderAllDigitRows();
         }
 
         // ... (Rest of existing JS functions) ...
@@ -746,27 +848,30 @@
         }
 
         function drawZones(zones, color, labelPrefix) {
+            const selectedIdx = (labelPrefix === '#') ? state.selectedDigitIndex : state.selectedDialIndex;
             zones.forEach((d, i) => {
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 2;
-                // Light transparent fill matching stroke
-                // Simple hack: assume hex color input and add opacity? 
-                // Or just hardcode based on type since we only resolve duplication.
-                // The original code used different fill colors.
-                // For 'digits' (#2ecc71) -> rgba(46, 204, 113, 0.3)
-                // For 'dials' (#f39c12) -> rgba(243, 156, 18, 0.3)
-                // We'll keep it simple and just set styles here based on color input being a key or just hardcode if easy.
+                const isSelected = (i === selectedIdx);
 
-                // Let's stick to original colors by checking color string since we only have 2 types
                 if (color === '#2ecc71') ctx.fillStyle = 'rgba(46, 204, 113, 0.3)';
                 else if (color === '#f39c12') ctx.fillStyle = 'rgba(243, 156, 18, 0.3)';
                 else ctx.fillStyle = 'rgba(128, 128, 128, 0.3)';
 
                 ctx.fillRect(d.x, d.y, d.w, d.h);
+
+                ctx.strokeStyle = color;
+                ctx.lineWidth = isSelected ? 3 : 2;
                 ctx.strokeRect(d.x, d.y, d.w, d.h);
 
+                if (isSelected) {
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeRect(d.x - 3, d.y - 3, d.w + 6, d.h + 6);
+                    ctx.setLineDash([]);
+                }
+
                 ctx.fillStyle = '#fff';
-                ctx.font = '12px sans-serif';
+                ctx.font = `${isSelected ? 'bold ' : ''}12px sans-serif`;
                 ctx.globalAlpha = 1.0;
                 ctx.fillText(`${labelPrefix}${i + 1}`, d.x + 2, d.y + 12);
             });
@@ -805,10 +910,12 @@
         }
 
         function generateOutput() {
-            const ta = document.getElementById('output');
-            if (!state.image) { ta.value = ""; return; }
+            const globalsTA = document.getElementById('output-globals');
+            const cameraTA = document.getElementById('output-camera');
+            if (!state.image) { globalsTA.value = ""; cameraTA.value = ""; return; }
 
-            let lines = [];
+            let globalsLines = [];
+            let cameraLines = [];
 
             // Output Scaling Logic
             const target_w_in = document.getElementById('target_w').value;
@@ -817,212 +924,204 @@
             let target_h = parseInt(target_h_in);
             let use_scaling = !isNaN(target_w) && !isNaN(target_h) && target_w > 0 && target_h > 0;
 
-            // ... (Dimensions) ...
-
-            // Image Dimensions (Unrotated - how it was loaded)
             const img_w = state.image.width;
             const img_h = state.image.height;
 
-            // Sensor Dimensions
             let sensor_w = state.sensorRes.w;
             let sensor_h = state.sensorRes.h;
 
-            // Calculate Scale Factor (Sensor / Visual)
             let scale_x = sensor_w / img_w;
             let scale_y = sensor_h / img_h;
 
             let anisotropic = Math.abs(scale_x - scale_y) > 0.1;
 
-            // ROI Variables
             let off_x = 0;
             let off_y = 0;
-            let w = sensor_w; // Default to full sensor
+            let w = sensor_w;
             let h = sensor_h;
 
             if (state.roi) {
-                // 1. Map Visual ROI -> Unrotated Image Coordinates (0-img_w)
                 const visROI = mapToOriginal(state.roi.x, state.roi.y, state.roi.w, state.roi.h);
-
-                // 2. Scale to Sensor Coordinates
                 let raw_x = visROI.x * scale_x;
                 let raw_y = visROI.y * scale_y;
                 let raw_w = visROI.w * scale_x;
                 let raw_h = visROI.h * scale_y;
 
                 if (state.force43) {
-                    // Force 4:3 Ratio logic (also adhering to Divisible by 8)
                     let nw = raw_w / 32;
                     let nh = raw_h / 24;
                     let n = Math.max(1, Math.round(Math.max(nw, nh)));
-
                     let target_w = n * 32;
-                    let target_h = n * 24; // 4:3 ratio (Div 8)
-
-                    // Center it
+                    let target_h = n * 24;
                     let cx = raw_x + raw_w / 2;
                     let cy = raw_y + raw_h / 2;
-
                     let new_x = cx - target_w / 2;
                     let new_y = cy - target_h / 2;
-
                     off_x = snapTo8(Math.max(0, new_x));
                     off_y = snapTo8(Math.max(0, new_y));
                     w = target_w;
                     h = target_h;
                 } else {
-                    // 3. Snap to 8 (Flexible Ratio)
                     off_x = snapTo8(Math.max(0, raw_x));
                     off_y = snapTo8(Math.max(0, raw_y));
                     w = snapTo8(Math.max(8, raw_w));
                     h = snapTo8(Math.max(8, raw_h));
                 }
-
-                // 4. Bounds Check (Sensor Space)
-                // Just for internal logic, logic below will print if needed.
             }
 
-            // Scaling Factor for Crop Zones
-            // The ROI determines the "Source" image size (w, h)
-            // If use_scaling is true, we map (w, h) -> (target_w, target_h)
+            // When camera_window is set: crop_zones are in sensor-window-pixel space → scale = 1.0.
+            // When no camera_window: hardware scales full sensor to configured resolution → scale accordingly.
             let final_scale_x = 1.0;
             let final_scale_y = 1.0;
 
-            if (use_scaling) {
+            if (!state.roi && use_scaling) {
                 let unscaled_out_w = (state.rotation % 180 === 0) ? w : h;
                 let unscaled_out_h = (state.rotation % 180 === 0) ? h : w;
-
                 final_scale_x = target_w / unscaled_out_w;
                 final_scale_y = target_h / unscaled_out_h;
             }
 
-            // NEW YAML Structure Generation
-            lines.push(`globals:`);
-            lines.push(`  - id: \${id_prefix}_crop_zones`);
-            lines.push(`    type: std::string`);
-            // lines.push(`    # restore_value: true`);
-            lines.push(`    max_restore_data_length: 254`);
+            // --- Globals section ---
+            globalsLines.push(`globals:`);
+            globalsLines.push(`  - id: \${id_prefix}_crop_zones`);
+            globalsLines.push(`    type: std::string`);
+            globalsLines.push(`    max_restore_data_length: 254`);
 
-            // Calculate Crop Zones first to populate initial_value
             let raw_crop_zones = [];
-            // Merge digits and dials -> ONLY DIGITS for global variable now
-            let all_zones = [...state.digits];
-
-            all_zones.forEach(z => {
-                // Calculate Scaled & Relativized Coordinates
+            [...state.digits].forEach(z => {
                 let res = calculateZoneCoordinates(z, off_x, off_y, scale_x, scale_y, w, h);
-
-                // Apply Final Output Scaling
-                if (use_scaling) {
+                if (!state.roi && use_scaling) {
                     res.x = Math.round(res.x * final_scale_x);
                     res.y = Math.round(res.y * final_scale_y);
                     res.w = Math.round(res.w * final_scale_x);
                     res.h = Math.round(res.h * final_scale_y);
                 }
-
                 raw_crop_zones.push(`[${res.x},${res.y},${res.x + res.w},${res.y + res.h}]`);
             });
 
-            lines.push(`    initial_value: '"[${raw_crop_zones.join(',')}]"'`);
-            lines.push(``); // Spacer
+            globalsLines.push(`    initial_value: '"[${raw_crop_zones.join(',')}]"'`);
 
-            lines.push(`esp32_camera_utils:`);
-            lines.push(`  id: \${id_prefix}_camera_utils`);
-            lines.push(`  camera_id: \${id_prefix}_espcam`);
-            lines.push(`  # debug: true`);
-            lines.push(`  ### zoom availale for OV2640, OV3660, OV5640, SC101IOT, SC030IOT from crop zones (explicit)`);
+            // --- Camera section ---
+            cameraLines.push(`esp32_camera_utils:`);
+            cameraLines.push(`  id: \${id_prefix}_camera_utils`);
+            cameraLines.push(`  camera_id: \${id_prefix}_espcam`);
+            cameraLines.push(`  # debug: true`);
+            cameraLines.push(`  ### zoom availale for OV2640, OV3660, OV5640, SC101IOT, SC030IOT from crop zones (explicit)`);
 
             if (state.roi) {
-                // Explanatory Comments for Swapped Dims
                 let comment_w = "# multiple of 8";
                 let comment_h = "# multiple of 8";
                 if (state.rotation === 90 || state.rotation === 270) {
                     comment_w += " (Visual Height)";
                     comment_h += " (Visual Width)";
                 }
-
-                // Bounds Check (Sensor Space)
-                if (off_x + w > sensor_w) lines.push(`  # WARNING: ROI width exceeds sensor bounds!`);
-                if (off_y + h > sensor_h) lines.push(`  # WARNING: ROI height exceeds sensor bounds!`);
-
-                lines.push(`  camera_window:`);
-                lines.push(`    offset_x: ${off_x} # multiple of 4`);
-                lines.push(`    offset_y: ${off_y} # multiple of 4`);
-                lines.push(`    width: ${w} ${comment_w} #Enforcement: 4:3 Aspect Ratio (W/H = 160/120)`);
-                lines.push(`    height: ${h} ${comment_h}`);
+                if (off_x + w > sensor_w) cameraLines.push(`  # WARNING: ROI width exceeds sensor bounds!`);
+                if (off_y + h > sensor_h) cameraLines.push(`  # WARNING: ROI height exceeds sensor bounds!`);
+                cameraLines.push(`  camera_window:`);
+                cameraLines.push(`    offset_x: ${off_x} # multiple of 4`);
+                cameraLines.push(`    offset_y: ${off_y} # multiple of 4`);
+                cameraLines.push(`    width: ${w} ${comment_w}${state.force43 ? ' #Enforcement: 4:3 Aspect Ratio (W/H = 160/120)' : ''}`);
+                cameraLines.push(`    height: ${h} ${comment_h}`);
             } else {
-                lines.push(`  # No camera_window defined (Full Sensor or default)`);
+                cameraLines.push(`  # No camera_window defined (Full Sensor or default)`);
             }
 
-            lines.push(``);
-            lines.push(`  enable_rotation: true`);
-            lines.push(`  rotation: ${state.rotation} # 0, 90, 180, 270 (special case built-in "accelerated" for 90, 180, 270 )`);
+            cameraLines.push(``);
+            cameraLines.push(`  enable_rotation: true`);
+            cameraLines.push(`  rotation: ${state.rotation} # 0, 90, 180, 270 (special case built-in "accelerated" for 90, 180, 270 )`);
 
-            // Add Debug Comments at bottom
-            lines.push(``);
-            lines.push(`# --- Debug Info ---`);
-            lines.push(`# Sensor: ${state.sensorRes.name}`);
-            lines.push(`# Original Image: ${img_w}x${img_h}`);
-            if (use_scaling) {
+            cameraLines.push(``);
+            cameraLines.push(`# --- Debug Info ---`);
+            cameraLines.push(`# Sensor: ${state.sensorRes.name}`);
+            cameraLines.push(`# Original Image: ${img_w}x${img_h}`);
+            if (state.roi) {
+                let out_w = (state.rotation % 180 === 0) ? w : h;
+                let out_h = (state.rotation % 180 === 0) ? h : w;
+                cameraLines.push(`# Camera Window Output: ${out_w}x${out_h} px — crop_zones are in this pixel space (no scaling)`);
+            } else if (use_scaling) {
                 let unscaled_out_w = (state.rotation % 180 === 0) ? w : h;
                 let unscaled_out_h = (state.rotation % 180 === 0) ? h : w;
-                lines.push(`# Output Scaling: Mapping ${unscaled_out_w}x${unscaled_out_h} (ROI) -> ${target_w}x${target_h}`);
+                cameraLines.push(`# Output Scaling: Mapping ${unscaled_out_w}x${unscaled_out_h} (full sensor) -> ${target_w}x${target_h}`);
             }
-            if (anisotropic) lines.push(`# WARNING: Anisotropic scaling input detected!`);
+            if (anisotropic) cameraLines.push(`# WARNING: Anisotropic scaling input detected!`);
 
-            // Analog Dials Generation
             if (state.dials.length > 0) {
-                lines.push(``);
-                lines.push(`analog_reader: # DEV !`);
-                lines.push(`  id: \${id_prefix}_analog_reader`);
-                lines.push(`  camera_id: \${id_prefix}_espcam`);
-                // lines.push(`  # validator: \${id_prefix}_analog_validator`);
-                lines.push(`  debug: true`);
-                lines.push(`  value_sensor:`);
-                lines.push(`    name: "Analog Total"`);
-                lines.push(`  update_interval: 60s`);
-                lines.push(`  dials:`);
+                cameraLines.push(``);
+                cameraLines.push(`analog_reader: # DEV !`);
+                cameraLines.push(`  id: \${id_prefix}_analog_reader`);
+                cameraLines.push(`  camera_id: \${id_prefix}_espcam`);
+                cameraLines.push(`  debug: true`);
+                cameraLines.push(`  value_sensor:`);
+                cameraLines.push(`    name: "Analog Total"`);
+                cameraLines.push(`  update_interval: 60s`);
+                cameraLines.push(`  dials:`);
 
                 state.dials.forEach((d, i) => {
-                    // Calculate Scaled & Relativized Coordinates (Same logic as digits)
                     let res = calculateZoneCoordinates(d, off_x, off_y, scale_x, scale_y, w, h);
-
-                    // Apply Final Output Scaling
                     if (use_scaling) {
                         res.x = Math.round(res.x * final_scale_x);
                         res.y = Math.round(res.y * final_scale_y);
                         res.w = Math.round(res.w * final_scale_x);
                         res.h = Math.round(res.h * final_scale_y);
                     }
-
-                    lines.push(`    - id: dial_${i + 1}`);
-                    lines.push(`      scale: 0.1`);
-                    lines.push(`      crop_x: ${res.x}`);
-                    lines.push(`      crop_y: ${res.y}`);
-                    lines.push(`      crop_w: ${res.w}`);
-                    lines.push(`      crop_h: ${res.h}`);
-                    lines.push(`      min_angle: 0`);
-                    lines.push(`      max_angle: 360`);
-                    lines.push(`      min_value: 0`);
-                    lines.push(`      max_value: 10`);
+                    cameraLines.push(`    - id: dial_${i + 1}`);
+                    cameraLines.push(`      scale: 0.1`);
+                    cameraLines.push(`      crop_x: ${res.x}`);
+                    cameraLines.push(`      crop_y: ${res.y}`);
+                    cameraLines.push(`      crop_w: ${res.w}`);
+                    cameraLines.push(`      crop_h: ${res.h}`);
+                    cameraLines.push(`      min_angle: 0`);
+                    cameraLines.push(`      max_angle: 360`);
+                    cameraLines.push(`      min_value: 0`);
+                    cameraLines.push(`      max_value: 10`);
                 });
             }
 
-            ta.value = lines.join('\n');
+            globalsTA.value = globalsLines.join('\n');
+            cameraTA.value = cameraLines.join('\n');
         }
 
         // Interaction
         function getMousePos(e) {
             const rect = canvas.getBoundingClientRect();
+            const zoom = state.viewZoom || 1;
             return {
-                x: (e.clientX - rect.left),
-                y: (e.clientY - rect.top)
+                x: (e.clientX - rect.left) / zoom,
+                y: (e.clientY - rect.top) / zoom
             };
         }
 
         function startDrawing(e) {
             if (!state.image) return;
+            const pos = getMousePos(e);
+
+            if (state.mode === 'digits') {
+                for (let i = state.digits.length - 1; i >= 0; i--) {
+                    const d = state.digits[i];
+                    if (pos.x >= d.x && pos.x <= d.x + d.w && pos.y >= d.y && pos.y <= d.y + d.h) {
+                        highlightDigitRow(i);
+                        updateCanvas();
+                        return;
+                    }
+                }
+                highlightDigitRow(-1);
+            } else if (state.mode === 'analog') {
+                for (let i = state.dials.length - 1; i >= 0; i--) {
+                    const d = state.dials[i];
+                    if (pos.x >= d.x && pos.x <= d.x + d.w && pos.y >= d.y && pos.y <= d.y + d.h) {
+                        state.selectedDialIndex = i;
+                        syncDialEditInputs();
+                        showDialEditFields(true);
+                        updateCanvas();
+                        return;
+                    }
+                }
+                state.selectedDialIndex = -1;
+                showDialEditFields(false);
+            }
+
             state.isDrawing = true;
-            state.startPos = getMousePos(e);
+            state.startPos = pos;
         }
 
         function draw(e) {
@@ -1090,6 +1189,7 @@
             } else if (state.mode === 'digits') {
                 if (checkOutsideROI(x, y, w, h, 'Zone')) return;
                 state.digits.push({ x: x, y: y, w: w, h: h });
+                renderAllDigitRows();
             } else if (state.mode === 'analog') {
                 if (checkOutsideROI(x, y, w, h, 'Dial')) return;
                 state.dials.push({ x: x, y: y, w: w, h: h });
@@ -1101,8 +1201,8 @@
 
         function resetCurrent() {
             if (state.mode === 'roi') state.roi = null;
-            if (state.mode === 'digits') state.digits.pop(); // Undo last
-            if (state.mode === 'analog') state.dials.pop(); // Undo last
+            if (state.mode === 'digits') { state.digits.pop(); renderAllDigitRows(); }
+            if (state.mode === 'analog') state.dials.pop();
             updateCanvas();
             generateOutput();
         }
@@ -1111,13 +1211,15 @@
             state.roi = null;
             state.digits = [];
             state.dials = [];
+            renderAllDigitRows();
             updateCanvas();
             generateOutput();
         }
 
         function copyOutput() {
-            const copyText = document.getElementById("output");
-            navigator.clipboard.writeText(copyText.value).then(() => {
+            const globals = document.getElementById("output-globals").value;
+            const camera = document.getElementById("output-camera").value;
+            navigator.clipboard.writeText(globals + '\n' + camera).then(() => {
                 alert("Copied to clipboard");
             }).catch(err => {
                 alert("Failed to copy. See console for details.");
@@ -1212,6 +1314,332 @@
             state.isManualUpdate = false;
         }
 
+
+        function renderAllDigitRows() {
+            const container = document.getElementById('digit-all-zones');
+            if (!container) return;
+            if (state.digits.length === 0) {
+                container.innerHTML = '<p style="color:#999;font-size:0.85em;margin:0;">Draw zones on the canvas or use ÷ Columns/Rows above.</p>';
+                return;
+            }
+            let html = '<div style="display:flex;gap:2px;font-size:0.75em;color:#999;margin-bottom:2px;">' +
+                       '<span style="width:24px;"></span>' +
+                       '<span style="width:50px;text-align:center;">X</span>' +
+                       '<span style="width:50px;text-align:center;">Y</span>' +
+                       '<span style="width:50px;text-align:center;">W</span>' +
+                       '<span style="width:50px;text-align:center;">H</span></div>';
+            state.digits.forEach((d, i) => {
+                const sel = (i === state.selectedDigitIndex);
+                const bg = sel ? 'background:#e8f8ef;border-radius:3px;' : '';
+                html += `<div id="drow-${i}" style="display:flex;align-items:center;gap:2px;margin-bottom:2px;${bg}padding:1px 2px;">` +
+                        `<span style="font-size:0.78em;color:#2ecc71;font-weight:bold;width:24px;flex-shrink:0;text-align:right;padding-right:3px;">#${i+1}</span>` +
+                        `<input type="number" value="${Math.round(d.x)}" oninput="updateDigitRow(${i})" style="width:50px;padding:2px;font-size:0.82em;">` +
+                        `<input type="number" value="${Math.round(d.y)}" oninput="updateDigitRow(${i})" style="width:50px;padding:2px;font-size:0.82em;">` +
+                        `<input type="number" value="${Math.round(d.w)}" oninput="updateDigitRow(${i})" style="width:50px;padding:2px;font-size:0.82em;">` +
+                        `<input type="number" value="${Math.round(d.h)}" oninput="updateDigitRow(${i})" style="width:50px;padding:2px;font-size:0.82em;">` +
+                        `<button onclick="deleteDigitRow(${i})" title="Delete zone" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:1px 4px;font-size:1em;flex-shrink:0;line-height:1;">&#x2715;</button>` +
+                        `</div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function highlightDigitRow(i) {
+            state.selectedDigitIndex = i;
+            document.querySelectorAll('[id^="drow-"]').forEach(el => {
+                el.style.background = '';
+            });
+            if (i >= 0) {
+                const row = document.getElementById('drow-' + i);
+                if (row) {
+                    row.style.background = '#e8f8ef';
+                    row.scrollIntoView({ block: 'nearest' });
+                }
+            }
+        }
+
+        function updateDigitRow(i) {
+            if (i < 0 || i >= state.digits.length) return;
+            const row = document.getElementById('drow-' + i);
+            if (!row) return;
+            const inputs = row.querySelectorAll('input[type="number"]');
+            const vals = [...inputs].map(inp => parseInt(inp.value));
+            if (vals.length < 4 || vals.some(isNaN) || vals[2] < 1 || vals[3] < 1) return;
+            state.digits[i] = { x: vals[0], y: vals[1], w: vals[2], h: vals[3] };
+            updateCanvas();
+            generateOutput();
+        }
+
+        function deleteDigitRow(i) {
+            state.digits.splice(i, 1);
+            if (state.selectedDigitIndex >= state.digits.length) {
+                state.selectedDigitIndex = state.digits.length - 1;
+            }
+            renderAllDigitRows();
+            updateCanvas();
+            generateOutput();
+        }
+
+        function syncDigitEditInputs() {}
+        function showDigitEditFields(visible) {}
+        function updateDigitFromInput() {}
+
+        function syncDialEditInputs() {
+            const i = state.selectedDialIndex;
+            if (i < 0 || i >= state.dials.length) return;
+            const d = state.dials[i];
+            document.getElementById('dial_x').value = Math.round(d.x);
+            document.getElementById('dial_y').value = Math.round(d.y);
+            document.getElementById('dial_w').value = Math.round(d.w);
+            document.getElementById('dial_h').value = Math.round(d.h);
+            document.getElementById('dial-edit-label').textContent = `Dial #${i + 1} selected`;
+        }
+
+        function showDialEditFields(visible) {
+            document.getElementById('dial-edit-fields').style.display = visible ? 'block' : 'none';
+            document.getElementById('dial-edit-hint').style.display = visible ? 'none' : 'block';
+        }
+
+        function updateDialFromInput() {
+            const i = state.selectedDialIndex;
+            if (i < 0 || i >= state.dials.length) return;
+            const x = parseInt(document.getElementById('dial_x').value);
+            const y = parseInt(document.getElementById('dial_y').value);
+            const w = parseInt(document.getElementById('dial_w').value);
+            const h = parseInt(document.getElementById('dial_h').value);
+            if (isNaN(x) || isNaN(y) || isNaN(w) || isNaN(h) || w < 1 || h < 1) return;
+            state.dials[i] = { x, y, w, h };
+            updateCanvas();
+            generateOutput();
+        }
+
+        // Reverse of calculateZoneCoordinates: output-space coords → visual canvas coords
+        function reverseZoneCoordinates(fin_x, fin_y, fin_w, fin_h, off_x, off_y, scale_x, scale_y, w, h) {
+            let rel_x, rel_y, d_sensor_w, d_sensor_h;
+            const out_w = (state.rotation % 180 === 0) ? w : h;
+            const out_h = (state.rotation % 180 === 0) ? h : w;
+
+            switch (state.rotation) {
+                case 0:
+                    rel_x = fin_x; rel_y = fin_y; d_sensor_w = fin_w; d_sensor_h = fin_h;
+                    break;
+                case 90:
+                    d_sensor_h = fin_w; d_sensor_w = fin_h;
+                    rel_x = fin_y; rel_y = out_w - fin_x - fin_w;
+                    break;
+                case 180:
+                    d_sensor_w = fin_w; d_sensor_h = fin_h;
+                    rel_x = out_w - fin_x - fin_w; rel_y = out_h - fin_y - fin_h;
+                    break;
+                case 270:
+                    d_sensor_h = fin_w; d_sensor_w = fin_h;
+                    rel_y = fin_x; rel_x = out_h - fin_y - fin_h;
+                    break;
+                default:
+                    return null;
+            }
+
+            const img_x = (rel_x + off_x) / scale_x;
+            const img_y = (rel_y + off_y) / scale_y;
+            const img_w = d_sensor_w / scale_x;
+            const img_h = d_sensor_h / scale_y;
+
+            return mapFromOriginal(img_x, img_y, img_w, img_h);
+        }
+
+        function generateZones(direction) {
+            if (!state.roi) { alert('Draw a Camera ROI first.'); return; }
+            if (state.digits.length > 0 && !confirm('Replace existing zones?')) return;
+
+            const count = Math.max(1, parseInt(document.getElementById('gen-count').value) || 8);
+            const gap   = Math.max(0, parseInt(document.getElementById('gen-gap').value)   || 0);
+            const { x, y, w, h } = state.roi;
+
+            state.digits = [];
+            for (let i = 0; i < count; i++) {
+                if (direction === 'col') {
+                    const cellW = (w - gap * (count - 1)) / count;
+                    state.digits.push({ x: Math.round(x + i * (cellW + gap)), y, w: Math.round(cellW), h });
+                } else {
+                    const cellH = (h - gap * (count - 1)) / count;
+                    state.digits.push({ x, y: Math.round(y + i * (cellH + gap)), w, h: Math.round(cellH) });
+                }
+            }
+            state.selectedDigitIndex = -1;
+            updateCanvas();
+            generateOutput();
+            renderAllDigitRows();
+        }
+
+        function parseCameraSection() {
+            const text = document.getElementById('output-camera').value;
+
+            // Sensor model: "# Sensor: OV5640 (2592x1944)"
+            const sensorMatch = text.match(/^#\s*Sensor:\s*(.+?)\s*\((\d+)x(\d+)\)/m);
+            if (sensorMatch) {
+                const name = sensorMatch[1].trim() + ' (' + sensorMatch[2] + 'x' + sensorMatch[3] + ')';
+                setSensorRes(parseInt(sensorMatch[2]), parseInt(sensorMatch[3]), name);
+            }
+
+            // Rotation
+            const rotMatch = text.match(/^\s*rotation:\s*(\d+)/m);
+            if (rotMatch) {
+                const rot = parseInt(rotMatch[1]);
+                if ([0, 90, 180, 270].includes(rot)) {
+                    state.rotation = rot;
+                    const input = document.getElementById('custom_rot');
+                    if (input) input.value = rot;
+                    const warning = document.getElementById('rot-warning');
+                    if (warning) warning.style.display = 'none';
+                }
+            }
+
+            // Force 4:3: flagged by comment on the width line
+            const force43 = /width:.*#Enforcement: 4:3/.test(text);
+            state.force43 = force43;
+            document.getElementById('force43').checked = force43;
+
+            // camera_window — only present when lines are not commented out
+            const offXMatch = text.match(/^\s{4}offset_x:\s*(\d+)/m);
+            const offYMatch = text.match(/^\s{4}offset_y:\s*(\d+)/m);
+            const widthMatch = text.match(/^\s{4}width:\s*(\d+)/m);
+            const heightMatch = text.match(/^\s{4}height:\s*(\d+)/m);
+
+            if (offXMatch && offYMatch && widthMatch && heightMatch) {
+                document.getElementById('manual_x').value = parseInt(offXMatch[1]);
+                document.getElementById('manual_y').value = parseInt(offYMatch[1]);
+                document.getElementById('manual_w').value = parseInt(widthMatch[1]);
+                document.getElementById('manual_h').value = parseInt(heightMatch[1]);
+                if (state.image) updateROIFromInput();
+            } else {
+                state.roi = null;
+            }
+        }
+
+        function parseGlobalsSection() {
+            if (!state.image) {
+                alert('Load an image first to parse crop zones.');
+                return;
+            }
+            if (![0, 90, 180, 270].includes(state.rotation)) {
+                alert('Parsing crop zones is only supported for rotations 0°, 90°, 180°, 270°.');
+                return;
+            }
+
+            const text = document.getElementById('output-globals').value;
+            const match = text.match(/initial_value:\s*'"(\[.*\])"'/);
+            if (!match) return;
+
+            try {
+                const zones = JSON.parse(match[1]);
+                if (!Array.isArray(zones)) return;
+
+                const sensor_w = state.sensorRes.w;
+                const sensor_h = state.sensorRes.h;
+                const scale_x = sensor_w / state.image.width;
+                const scale_y = sensor_h / state.image.height;
+
+                let off_x = 0, off_y = 0, w = sensor_w, h = sensor_h;
+                if (state.roi) {
+                    const visROI = mapToOriginal(state.roi.x, state.roi.y, state.roi.w, state.roi.h);
+                    const raw_x = visROI.x * scale_x, raw_y = visROI.y * scale_y;
+                    const raw_w = visROI.w * scale_x, raw_h = visROI.h * scale_y;
+                    if (state.force43) {
+                        const n = Math.max(1, Math.round(Math.max(raw_w / 32, raw_h / 24)));
+                        const fw = n * 32, fh = n * 24;
+                        off_x = snapTo8(Math.max(0, raw_x + raw_w / 2 - fw / 2));
+                        off_y = snapTo8(Math.max(0, raw_y + raw_h / 2 - fh / 2));
+                        w = fw; h = fh;
+                    } else {
+                        off_x = snapTo8(Math.max(0, raw_x));
+                        off_y = snapTo8(Math.max(0, raw_y));
+                        w = snapTo8(Math.max(8, raw_w));
+                        h = snapTo8(Math.max(8, raw_h));
+                    }
+                }
+
+                state.digits = [];
+                zones.forEach(zone => {
+                    if (!Array.isArray(zone) || zone.length < 4) return;
+                    const [x1, y1, x2, y2] = zone;
+                    const vis = reverseZoneCoordinates(x1, y1, x2 - x1, y2 - y1, off_x, off_y, scale_x, scale_y, w, h);
+                    if (!vis) return;
+                    state.digits.push({
+                        x: Math.round(vis.x),
+                        y: Math.round(vis.y),
+                        w: Math.round(vis.w),
+                        h: Math.round(vis.h)
+                    });
+                });
+                renderAllDigitRows();
+            } catch (e) {
+                console.error('Failed to parse crop zones:', e);
+                alert('Failed to parse crop zones: ' + e.message);
+            }
+        }
+
+        function parseDialsSection() {
+            if (!state.image || ![0, 90, 180, 270].includes(state.rotation)) return;
+
+            const text = document.getElementById('output-camera').value;
+            const dialsIdx = text.indexOf('  dials:');
+            if (dialsIdx === -1) { state.dials = []; return; }
+
+            const sensor_w = state.sensorRes.w;
+            const sensor_h = state.sensorRes.h;
+            const scale_x = sensor_w / state.image.width;
+            const scale_y = sensor_h / state.image.height;
+
+            let off_x = 0, off_y = 0, w = sensor_w, h = sensor_h;
+            if (state.roi) {
+                const visROI = mapToOriginal(state.roi.x, state.roi.y, state.roi.w, state.roi.h);
+                const raw_x = visROI.x * scale_x, raw_y = visROI.y * scale_y;
+                const raw_w = visROI.w * scale_x, raw_h = visROI.h * scale_y;
+                if (state.force43) {
+                    const n = Math.max(1, Math.round(Math.max(raw_w / 32, raw_h / 24)));
+                    const fw = n * 32, fh = n * 24;
+                    off_x = snapTo8(Math.max(0, raw_x + raw_w / 2 - fw / 2));
+                    off_y = snapTo8(Math.max(0, raw_y + raw_h / 2 - fh / 2));
+                    w = fw; h = fh;
+                } else {
+                    off_x = snapTo8(Math.max(0, raw_x));
+                    off_y = snapTo8(Math.max(0, raw_y));
+                    w = snapTo8(Math.max(8, raw_w));
+                    h = snapTo8(Math.max(8, raw_h));
+                }
+            }
+
+            const dialsText = text.slice(dialsIdx);
+            const re = /crop_x:\s*(\d+)[\s\S]*?crop_y:\s*(\d+)[\s\S]*?crop_w:\s*(\d+)[\s\S]*?crop_h:\s*(\d+)/g;
+
+            state.dials = [];
+            let m;
+            while ((m = re.exec(dialsText)) !== null) {
+                const vis = reverseZoneCoordinates(
+                    parseInt(m[1]), parseInt(m[2]), parseInt(m[3]), parseInt(m[4]),
+                    off_x, off_y, scale_x, scale_y, w, h
+                );
+                if (!vis) continue;
+                state.dials.push({
+                    x: Math.round(vis.x), y: Math.round(vis.y),
+                    w: Math.round(vis.w), h: Math.round(vis.h)
+                });
+            }
+        }
+
+        function parseZones() {
+            parseGlobalsSection();
+            parseDialsSection();
+            updateCanvas();
+            generateOutput();
+        }
+
+        function parseOutput() {
+            parseCameraSection();
+            parseGlobalsSection();
+            parseDialsSection();
+            updateCanvas();
+            generateOutput();
+        }
 
         setMode("roi");
     </script>
