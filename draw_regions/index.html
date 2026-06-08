@@ -238,8 +238,8 @@
             </div>
 
             <div style="display: flex; gap: 8px; margin: 8px 0; align-items: center;">
-                <button class="btn btn-secondary" onclick="zoomOut()">&#x2212; Zoom Out</button>
-                <button class="btn btn-secondary" onclick="zoomIn()">&#x2b; Zoom In</button>
+                <button class="btn btn-primary" onclick="zoomOut()">&#x2212; Zoom Out</button>
+                <button class="btn btn-primary" onclick="zoomIn()">&#x2b; Zoom In</button>
                 <button class="btn btn-primary" onclick="zoomToROI()">&#x25a3; Zoom to ROI</button>
                 <span id="zoom-label" style="font-size: 0.85em; color: #666; margin-left: 4px;">100%</span>
             </div>
@@ -268,7 +268,7 @@
                 <div style="margin-bottom: 10px;">
                     <label style="display:block; margin-bottom:5px;">Sensor Model:</label>
                     <div class="dropdown" style="position: relative; display: inline-block; width: 100%;">
-                        <button class="btn btn-secondary" style="width: 100%; text-align: left;"
+                        <button class="btn btn-primary" style="width: 100%; text-align: left;"
                             onclick="document.getElementById('resDropdown').style.display = document.getElementById('resDropdown').style.display === 'block' ? 'none' : 'block'"
                             id="sensor-res-label">Select Sensor</button>
                         <div id="resDropdown"
@@ -297,13 +297,13 @@
                 <div style="margin-top: 10px;">
                     <label style="display:block; margin-bottom:5px;">Rotation:</label>
                     <div style="display: flex; gap: 5px; flex-wrap: wrap;">
-                        <button class="btn btn-secondary" style="flex:1; padding: 4px;"
+                        <button class="btn btn-primary" style="flex:1; padding: 4px;"
                             onclick="setRotation(0)">0°</button>
-                        <button class="btn btn-secondary" style="flex:1; padding: 4px;"
+                        <button class="btn btn-primary" style="flex:1; padding: 4px;"
                             onclick="setRotation(90)">90°</button>
-                        <button class="btn btn-secondary" style="flex:1; padding: 4px;"
+                        <button class="btn btn-primary" style="flex:1; padding: 4px;"
                             onclick="setRotation(180)">180°</button>
-                        <button class="btn btn-secondary" style="flex:1; padding: 4px;"
+                        <button class="btn btn-primary" style="flex:1; padding: 4px;"
                             onclick="setRotation(270)">270°</button>
                     </div>
                 </div>
@@ -341,9 +341,9 @@
                             onchange="generateOutput()" style="width: 70px;"></div>
                 </div>
                 <div style="margin-top: 5px;">
-                    <button class="btn btn-secondary" style="font-size: 0.8em; padding: 4px 8px;"
+                    <button class="btn btn-primary" style="font-size: 0.8em; padding: 4px 8px;"
                         onclick="setTargetRes(640, 480)">VGA (640x480)</button>
-                    <button class="btn btn-secondary" style="font-size: 0.8em; padding: 4px 8px;"
+                    <button class="btn btn-primary" style="font-size: 0.8em; padding: 4px 8px;"
                         onclick="setTargetRes(800, 600)">SVGA (800x600)</button>
                 </div>
             </div>
@@ -360,7 +360,7 @@
                     </div>
                     <div style="display: flex; gap: 5px;">
                         <button class="btn btn-primary" style="flex:1; font-size:0.85em; padding:5px;" onclick="generateZones('col')">&#247; Columns</button>
-                        <button class="btn btn-secondary" style="flex:1; font-size:0.85em; padding:5px;" onclick="generateZones('row')">&#247; Rows</button>
+                        <button class="btn btn-primary" style="flex:1; font-size:0.85em; padding:5px;" onclick="generateZones('row')">&#247; Rows</button>
                     </div>
                 </div>
                 <div id="digit-all-zones" style="margin-top:4px;"></div>
@@ -390,14 +390,14 @@
             </div>
             <div id="card-actions-digits" class="card" style="display:none;">
                 <h3>Actions</h3>
-                <button class="btn btn-secondary" style="width: 100%; margin-bottom: 10px;"
+                <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;"
                     onclick="resetCurrent()">Undo Last Digit</button>
                 <button class="btn btn-danger" style="width: 100%;"
                     onclick="state.digits=[]; updateCanvas(); generateOutput();">Clear All Digits</button>
             </div>
             <div id="card-actions-analog" class="card" style="display:none;">
                 <h3>Actions</h3>
-                <button class="btn btn-secondary" style="width: 100%; margin-bottom: 10px;"
+                <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;"
                     onclick="resetCurrent()">Undo Last Dial</button>
                 <button class="btn btn-danger" style="width: 100%;"
                     onclick="state.dials=[]; updateCanvas(); generateOutput();">Clear All Dials</button>
@@ -416,7 +416,7 @@
                 <textarea id="output-camera" style="height: 200px;"></textarea>
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
                     <button class="btn btn-primary" style="flex: 1;" onclick="parseOutput()">&#9881; Parse</button>
-                    <button class="btn btn-secondary" style="flex: 1;" onclick="copyOutput()">&#128203; Copy All</button>
+                    <button class="btn btn-primary" style="flex: 1;" onclick="copyOutput()">&#128203; Copy All</button>
                 </div>
             </div>
         </div>
