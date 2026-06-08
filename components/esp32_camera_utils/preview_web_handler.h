@@ -17,16 +17,19 @@ class PreviewWebHandler : public web_server_idf::AsyncWebHandler {
  public:
   /**
    * @brief Construct a new Preview Web Handler object
-   * 
+   *
    * @param image_provider Callback that returns a shared pointer to the current preview image (RotatedPreviewImage)
+   * @param pause_provider Optional callback that returns a boolean indicating if processing is paused (e.g., Setup Mode active). This allows better logging.
    */
-  PreviewWebHandler(std::function<std::shared_ptr<camera::CameraImage>()> image_provider);
+  PreviewWebHandler(std::function<std::shared_ptr<camera::CameraImage>()> image_provider,
+                    std::function<bool()> pause_provider = nullptr);
 
   bool canHandle(web_server_idf::AsyncWebServerRequest *request) const override;
   void handleRequest(web_server_idf::AsyncWebServerRequest *request) override;
 
  private:
   std::function<std::shared_ptr<camera::CameraImage>()> image_provider_;
+  std::function<bool()> pause_provider_;
 };
 
 }  // namespace esp32_camera_utils

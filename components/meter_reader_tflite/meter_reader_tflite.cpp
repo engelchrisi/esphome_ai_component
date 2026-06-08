@@ -292,9 +292,10 @@ void MeterReaderTFLite::setup() {
           #ifdef USE_WEB_SERVER
           #ifdef DEV_ENABLE_ROTATION
           if (this->web_server_) {
-              this->web_server_->add_handler(new esphome::esp32_camera_utils::PreviewWebHandler([this]() {
-                  return this->get_preview_image();
-              }));
+              this->web_server_->add_handler(new esphome::esp32_camera_utils::PreviewWebHandler(
+                  [this]() { return this->get_preview_image(); },
+                  [this]() { return this->get_pause_processing(); }
+              ));
           }
           #endif
           #endif
@@ -691,6 +692,17 @@ void MeterReaderTFLite::process_full_image(std::shared_ptr<camera::CameraImage> 
     if (this->generate_preview_ || this->request_preview_) {
         auto preview = this->camera_coord_.get_debug_image();
         ESP_LOGD(TAG, "Checking for preview image. Ptr: %p", preview ? preview.get() : nullptr);
+
+        // Fallback: camera_coord_ caching can fail (OOM, low-memory path, etc.).
+        // generate_rotated_preview() decodes directly from the raw frame — it never fails silently.
+        if (!preview) {
+            ESP_LOGD(TAG, "Preview cache miss — generating directly from raw frame");
+            preview = esp32_camera_utils::ImageProcessor::generate_rotated_preview(
+                frame, this->rotation_,
+                this->camera_coord_.get_width(),
+                this->camera_coord_.get_height());
+            ESP_LOGD(TAG, "Direct preview generated. Ptr: %p", preview ? preview.get() : nullptr);
+        }
         
         if (preview) {
              // Draw crop zones on the preview image for debugging visualization.

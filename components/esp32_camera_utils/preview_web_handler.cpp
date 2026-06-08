@@ -14,8 +14,9 @@ namespace esp32_camera_utils {
 
 static const char *const TAG = "preview_web_handler";
 
-PreviewWebHandler::PreviewWebHandler(std::function<std::shared_ptr<camera::CameraImage>()> image_provider)
-    : image_provider_(image_provider) {}
+PreviewWebHandler::PreviewWebHandler(std::function<std::shared_ptr<camera::CameraImage>()> image_provider,
+                                     std::function<bool()> pause_provider)
+    : image_provider_(image_provider), pause_provider_(pause_provider) {}
 
 bool PreviewWebHandler::canHandle(web_server_idf::AsyncWebServerRequest *request) const {
   return request->url() == "/preview";
@@ -29,8 +30,17 @@ void PreviewWebHandler::handleRequest(web_server_idf::AsyncWebServerRequest *req
 
   std::shared_ptr<camera::CameraImage> img_ptr = this->image_provider_();
   if (!img_ptr) {
-      ESP_LOGW(TAG, "HTTP Preview requested but no image available");
-      request->send(503, "text/plain", "Preview not available yet. Please try again.");
+      bool paused = this->pause_provider_ && this->pause_provider_();
+      if (paused) {
+          ESP_LOGW(TAG, "HTTP Preview requested but AI processing is paused");
+          request->send(503, "text/plain",
+              "AI processing is paused. Resume it from Home Assistant (toggle the Pause switch) to generate a preview.");
+      } else {
+          ESP_LOGW(TAG, "HTTP Preview requested but no image available yet");
+          request->send(503, "text/plain",
+              "Preview not ready yet — waiting for the first inference cycle (~60 s after boot). "
+              "Press 'Reload Model' in Home Assistant to trigger one immediately.");
+      }
       return;
   }
 
