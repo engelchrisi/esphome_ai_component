@@ -14,14 +14,13 @@
         }
 
         .container {
-            max-width: 1400px;
             margin: 0 auto;
             display: flex;
             gap: 20px;
         }
 
         .main-panel {
-            flex: 2;
+            flex: 3;
             min-width: 0; /* prevent flex item from growing beyond allocation */
             background: white;
             padding: 20px;
@@ -30,7 +29,7 @@
         }
 
         .sidebar {
-            flex: 1;
+            flex: 2;
             min-width: 350px;
             display: flex;
             flex-direction: column;
@@ -96,7 +95,7 @@
             position: relative;
             overflow: auto;
             width: 100%;
-            max-height: 80vh;
+            height: 70vh;
             border: 1px solid #ddd;
             background-image: repeating-linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee), repeating-linear-gradient(45deg, #eee 25%, #fff 25%, #fff 75%, #eee 75%, #eee);
             background-position: 0 0, 10px 10px;
@@ -238,6 +237,13 @@
                 </div>
             </div>
 
+            <div style="display: flex; gap: 8px; margin: 8px 0; align-items: center;">
+                <button class="btn btn-secondary" onclick="zoomOut()">&#x2212; Zoom Out</button>
+                <button class="btn btn-secondary" onclick="zoomIn()">&#x2b; Zoom In</button>
+                <button class="btn btn-primary" onclick="zoomToROI()">&#x25a3; Zoom to ROI</button>
+                <span id="zoom-label" style="font-size: 0.85em; color: #666; margin-left: 4px;">100%</span>
+            </div>
+
             <div class="legend">
                 <div class="legend-item">
                     <div class="color-box" style="background: rgba(52, 152, 219, 0.3); border: 2px solid #3498db;">
@@ -253,19 +259,6 @@
                 </div>
             </div>
 
-            <div class="card" style="margin-top: 20px;">
-                <h3>Globals</h3>
-                <textarea id="output-globals" style="height: 120px;"></textarea>
-                <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" onclick="parseZones()">&#9881; Parse Digit &amp; Analog Zones</button>
-            </div>
-            <div class="card" style="margin-top: 10px;">
-                <h3>esp32_camera_utils</h3>
-                <textarea id="output-camera" style="height: 200px;"></textarea>
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <button class="btn btn-primary" style="flex: 1;" onclick="parseOutput()">&#9881; Parse</button>
-                    <button class="btn btn-secondary" style="flex: 1;" onclick="copyOutput()">&#128203; Copy All</button>
-                </div>
-            </div>
         </div>
 
         <div class="sidebar">
@@ -411,7 +404,24 @@
             </div>
         </div>
 
-        <!-- NEW HELP SIDEBAR -->
+        <!-- OUTPUT COLUMN -->
+        <div class="sidebar">
+            <div class="card">
+                <h3>Globals</h3>
+                <textarea id="output-globals" style="height: 120px;"></textarea>
+                <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" onclick="parseZones()">&#9881; Parse Digit &amp; Analog Zones</button>
+            </div>
+            <div class="card">
+                <h3>esp32_camera_utils</h3>
+                <textarea id="output-camera" style="height: 200px;"></textarea>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button class="btn btn-primary" style="flex: 1;" onclick="parseOutput()">&#9881; Parse</button>
+                    <button class="btn btn-secondary" style="flex: 1;" onclick="copyOutput()">&#128203; Copy All</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- HELP SIDEBAR -->
         <div class="help-sidebar" id="help-sidebar">
             <h3>Instructions</h3>
             <div id="help-content">
@@ -578,6 +588,26 @@
             container.innerHTML = content;
         }
 
+        function applyViewZoom(zoom) {
+            state.viewZoom = Math.max(0.1, Math.min(10, zoom));
+            const zoomBox = document.getElementById('canvas-zoom-box');
+            if (state.viewZoom === 1) {
+                canvas.style.transform = '';
+                zoomBox.style.width = '';
+                zoomBox.style.height = '';
+            } else {
+                canvas.style.transform = `scale(${state.viewZoom})`;
+                canvas.style.transformOrigin = 'top left';
+                zoomBox.style.width = canvas.width * state.viewZoom + 'px';
+                zoomBox.style.height = canvas.height * state.viewZoom + 'px';
+            }
+            const label = document.getElementById('zoom-label');
+            if (label) label.textContent = Math.round(state.viewZoom * 100) + '%';
+        }
+
+        function zoomIn() { applyViewZoom(state.viewZoom * 1.25); }
+        function zoomOut() { applyViewZoom(state.viewZoom / 1.25); }
+
         function zoomToROI() {
             if (!state.roi) { resetView(); return; }
 
@@ -590,18 +620,8 @@
             const viewW = state.roi.w + padX * 2;
             const viewH = state.roi.h + padY * 2;
 
-            const zoom = Math.min(wrapperW / viewW, wrapperH / viewH, 8);
-            state.viewZoom = Math.max(zoom, 0.1);
+            applyViewZoom(Math.max(Math.min(wrapperW / viewW, wrapperH / viewH, 8), 0.1));
 
-            // transform: scale() doesn't affect layout; size the zoom-box explicitly
-            // so the wrapper scrollbars reflect the zoomed canvas.
-            canvas.style.transform = `scale(${state.viewZoom})`;
-            canvas.style.transformOrigin = 'top left';
-            const zoomBox = document.getElementById('canvas-zoom-box');
-            zoomBox.style.width = canvas.width * state.viewZoom + 'px';
-            zoomBox.style.height = canvas.height * state.viewZoom + 'px';
-
-            // Defer scroll so the browser has applied the zoom-box dimensions first
             const centerX = (state.roi.x + state.roi.w / 2) * state.viewZoom;
             const centerY = (state.roi.y + state.roi.h / 2) * state.viewZoom;
             requestAnimationFrame(() => {
@@ -611,11 +631,7 @@
         }
 
         function resetView() {
-            state.viewZoom = 1;
-            canvas.style.transform = '';
-            const zoomBox = document.getElementById('canvas-zoom-box');
-            zoomBox.style.width = '';
-            zoomBox.style.height = '';
+            applyViewZoom(1);
             const wrapper = document.querySelector('.canvas-wrapper');
             wrapper.scrollLeft = 0;
             wrapper.scrollTop = 0;
