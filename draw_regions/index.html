@@ -208,6 +208,18 @@
             margin-bottom: 15px;
             border-radius: 4px;
         }
+        /* Zone-row number inputs — make spinners usable */
+        .zone-row input[type="number"] {
+            width: 52px;
+            padding: 3px 2px;
+            font-size: 0.85em;
+        }
+        .zone-row input[type="number"]::-webkit-inner-spin-button,
+        .zone-row input[type="number"]::-webkit-outer-spin-button {
+            opacity: 1;
+            height: 22px;
+            cursor: pointer;
+        }
     </style>
 </head>
 
@@ -227,24 +239,28 @@
                     (Optional)</button>
                 <button class="mode-btn" onclick="setMode('digits')" id="btn-mode-digits">2. Set Digit Zones</button>
                 <button class="mode-btn" onclick="setMode('analog')" id="btn-mode-analog">3. Set Analog Dials</button>
+                <button class="mode-btn" onclick="setMode('results')" id="btn-mode-results">4. Results</button>
             </div>
 
             <p class="help-text" id="status-text">Active Mode: Camera ROI</p>
 
-            <div class="canvas-wrapper">
-                <div id="canvas-zoom-box">
-                    <canvas id="canvas"></canvas>
+            <div id="canvas-section">
+                <div class="canvas-wrapper">
+                    <div id="canvas-zoom-box">
+                        <canvas id="canvas"></canvas>
+                    </div>
                 </div>
-            </div>
 
-            <div style="display: flex; gap: 8px; margin: 8px 0; align-items: center;">
-                <button class="btn btn-primary" onclick="zoomOut()">&#x2212; Zoom Out</button>
-                <button class="btn btn-primary" onclick="zoomIn()">&#x2b; Zoom In</button>
-                <button class="btn btn-primary" onclick="zoomToROI()">&#x25a3; Zoom to ROI</button>
-                <span id="zoom-label" style="font-size: 0.85em; color: #666; margin-left: 4px;">100%</span>
-            </div>
+                <div style="display: flex; gap: 8px; margin: 8px 0; align-items: center;">
+                    <button class="btn btn-primary" onclick="zoomOut()">&#x2212; Zoom Out</button>
+                    <button class="btn btn-primary" onclick="zoomIn()">&#x2b; Zoom In</button>
+                    <button class="btn btn-primary" onclick="zoomToROI()">&#x25a3; Zoom to ROI</button>
+                    <span id="zoom-label" style="font-size: 0.85em; color: #666; margin-left: 4px;">100%</span>
+                    <span style="font-size: 0.85em; color: #999; margin-left: 10px;">|</span>
+                    <span id="image-info" style="font-size: 0.85em; color: #666;"></span>
+                </div>
 
-            <div class="legend">
+                <div class="legend">
                 <div class="legend-item">
                     <div class="color-box" style="background: rgba(52, 152, 219, 0.3); border: 2px solid #3498db;">
                     </div> Camera ROI (Blue)
@@ -256,6 +272,24 @@
                 <div class="legend-item">
                     <div class="color-box" style="background: rgba(243, 156, 18, 0.3); border: 2px solid #f39c12;">
                     </div> Analog Dials (Orange)
+                </div>
+            </div><!-- /legend -->
+            </div><!-- /canvas-section -->
+
+            <!-- RESULTS TAB -->
+            <div id="card-results" style="display:none;">
+                <div class="card">
+                    <h3>Globals</h3>
+                    <textarea id="output-globals" style="height: 160px; width: 100%;"></textarea>
+                    <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" onclick="parseZones()">&#9881; Parse Digit &amp; Analog Zones</button>
+                </div>
+                <div class="card" style="margin-top: 12px;">
+                    <h3>esp32_camera_utils</h3>
+                    <textarea id="output-camera" style="height: 300px; width: 100%;"></textarea>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button class="btn btn-primary" style="flex: 1;" onclick="parseOutput()">&#9881; Parse</button>
+                        <button class="btn btn-primary" style="flex: 1;" onclick="copyOutput()">&#128203; Copy All</button>
+                    </div>
                 </div>
             </div>
 
@@ -297,13 +331,13 @@
                 <div style="margin-top: 10px;">
                     <label style="display:block; margin-bottom:5px;">Rotation:</label>
                     <div style="display: flex; gap: 5px; flex-wrap: wrap;">
-                        <button class="btn btn-primary" style="flex:1; padding: 4px;"
+                        <button id="rot-btn-0" class="btn btn-primary" style="flex:1; padding: 4px;"
                             onclick="setRotation(0)">0°</button>
-                        <button class="btn btn-primary" style="flex:1; padding: 4px;"
+                        <button id="rot-btn-90" class="btn btn-secondary" style="flex:1; padding: 4px;"
                             onclick="setRotation(90)">90°</button>
-                        <button class="btn btn-primary" style="flex:1; padding: 4px;"
+                        <button id="rot-btn-180" class="btn btn-secondary" style="flex:1; padding: 4px;"
                             onclick="setRotation(180)">180°</button>
-                        <button class="btn btn-primary" style="flex:1; padding: 4px;"
+                        <button id="rot-btn-270" class="btn btn-secondary" style="flex:1; padding: 4px;"
                             onclick="setRotation(270)">270°</button>
                     </div>
                 </div>
@@ -319,17 +353,8 @@
             </div>
 
             <div id="card-sensor-roi" class="card">
-                <h3>Target Sensor ROI</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                    <div><label>Off_X:</label> <input type="number" id="manual_x" onchange="updateROIFromInput()"
-                            style="width: 50px;"></div>
-                    <div><label>Off_Y:</label> <input type="number" id="manual_y" onchange="updateROIFromInput()"
-                            style="width: 50px;"></div>
-                    <div><label>Width:</label> <input type="number" id="manual_w" onchange="updateROIFromInput()"
-                            style="width: 50px;"></div>
-                    <div><label>Height:</label> <input type="number" id="manual_h" onchange="updateROIFromInput()"
-                            style="width: 50px;"></div>
-                </div>
+                <h3>Camera ROI</h3>
+                <div id="roi-row-container"></div>
             </div>
 
             <div id="card-target-res" class="card" style="display:none;">
@@ -351,34 +376,13 @@
             <!-- DIGIT EDIT -->
             <div id="card-digit-edit" class="card" style="display:none;">
                 <h3>Digit Zones</h3>
-                <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
-                    <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
-                        <label style="font-size:0.85em;">Count:</label>
-                        <input type="number" id="gen-count" value="8" min="1" max="32" style="width: 48px; padding: 3px;">
-                        <label style="font-size:0.85em;">Gap:</label>
-                        <input type="number" id="gen-gap" value="0" min="0" style="width: 44px; padding: 3px;">
-                    </div>
-                    <div style="display: flex; gap: 5px;">
-                        <button class="btn btn-primary" style="flex:1; font-size:0.85em; padding:5px;" onclick="generateZones('col')">&#247; Columns</button>
-                        <button class="btn btn-primary" style="flex:1; font-size:0.85em; padding:5px;" onclick="generateZones('row')">&#247; Rows</button>
-                    </div>
-                </div>
-                <div id="digit-all-zones" style="margin-top:4px;"></div>
+                <div id="digit-all-zones"></div>
             </div>
 
             <!-- DIAL EDIT -->
             <div id="card-dial-edit" class="card" style="display:none;">
-                <h3>Edit Selected Dial</h3>
-                <p id="dial-edit-hint" style="color:#999; font-size:0.9em; margin:0;">Click an orange dial to select it for editing.</p>
-                <div id="dial-edit-fields" style="display:none; margin-top:10px;">
-                    <p id="dial-edit-label" style="font-size:0.85em; color:#f39c12; font-weight:bold; margin:0 0 8px 0;"></p>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                        <div><label>X:</label> <input type="number" id="dial_x" oninput="updateDialFromInput()" style="width: 60px;"></div>
-                        <div><label>Y:</label> <input type="number" id="dial_y" oninput="updateDialFromInput()" style="width: 60px;"></div>
-                        <div><label>W:</label> <input type="number" id="dial_w" oninput="updateDialFromInput()" style="width: 60px;"></div>
-                        <div><label>H:</label> <input type="number" id="dial_h" oninput="updateDialFromInput()" style="width: 60px;"></div>
-                    </div>
-                </div>
+                <h3>Analog Dials</h3>
+                <div id="dial-all-zones"></div>
             </div>
 
             <!-- ACTIONS -->
@@ -386,38 +390,23 @@
                 <h3>Actions</h3>
                 <button class="btn btn-danger" style="width: 100%; margin-bottom: 10px;" onclick="resetCurrent()">Clear
                     ROI</button>
-                <button class="btn btn-danger" style="width: 100%;" onclick="resetAll()">Reset All</button>
+                <button class="btn btn-danger" style="width: 100%; margin-bottom: 10px;" onclick="resetAll()">Reset All</button>
+                <button class="btn btn-primary" style="width: 100%; font-size: 0.8em;"
+                    onclick="localStorage.removeItem('drState'); localStorage.removeItem('drImage'); location.reload();">Clear Saved Settings</button>
             </div>
             <div id="card-actions-digits" class="card" style="display:none;">
                 <h3>Actions</h3>
-                <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;"
-                    onclick="resetCurrent()">Undo Last Digit</button>
-                <button class="btn btn-danger" style="width: 100%;"
-                    onclick="state.digits=[]; updateCanvas(); generateOutput();">Clear All Digits</button>
+                <button class="btn btn-danger" style="width: 100%; margin-bottom: 10px;"
+                    onclick="state.digits=[]; renderAllDigitRows(); updateCanvas(); generateOutput();">Clear All Digits</button>
+                <button class="btn btn-primary" style="width: 100%; font-size: 0.8em;"
+                    onclick="localStorage.removeItem('drState'); localStorage.removeItem('drImage'); location.reload();">Clear Saved Settings</button>
             </div>
             <div id="card-actions-analog" class="card" style="display:none;">
                 <h3>Actions</h3>
-                <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;"
-                    onclick="resetCurrent()">Undo Last Dial</button>
-                <button class="btn btn-danger" style="width: 100%;"
-                    onclick="state.dials=[]; updateCanvas(); generateOutput();">Clear All Dials</button>
-            </div>
-        </div>
-
-        <!-- OUTPUT COLUMN -->
-        <div class="sidebar">
-            <div class="card">
-                <h3>Globals</h3>
-                <textarea id="output-globals" style="height: 120px;"></textarea>
-                <button class="btn btn-primary" style="width: 100%; margin-top: 8px;" onclick="parseZones()">&#9881; Parse Digit &amp; Analog Zones</button>
-            </div>
-            <div class="card">
-                <h3>esp32_camera_utils</h3>
-                <textarea id="output-camera" style="height: 200px;"></textarea>
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <button class="btn btn-primary" style="flex: 1;" onclick="parseOutput()">&#9881; Parse</button>
-                    <button class="btn btn-primary" style="flex: 1;" onclick="copyOutput()">&#128203; Copy All</button>
-                </div>
+                <button class="btn btn-danger" style="width: 100%; margin-bottom: 10px;"
+                    onclick="state.dials=[]; renderAllDialRows(); updateCanvas(); generateOutput();">Clear All Dials</button>
+                <button class="btn btn-primary" style="width: 100%; font-size: 0.8em;"
+                    onclick="localStorage.removeItem('drState'); localStorage.removeItem('drImage'); location.reload();">Clear Saved Settings</button>
             </div>
         </div>
 
@@ -448,6 +437,80 @@
             viewZoom: 1
         };
 
+        const STORAGE_KEY = 'drState';
+        const IMAGE_KEY   = 'drImage';
+
+        function saveState() {
+            const bundle = {
+                rotation: state.rotation,
+                sensorRes: state.sensorRes,
+                force43: state.force43,
+                roi: state.roi,
+                digits: state.digits,
+                dials: state.dials,
+                viewZoom: state.viewZoom,
+                targetW: document.getElementById('target_w')?.value || '',
+                targetH: document.getElementById('target_h')?.value || '',
+            };
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(bundle)); } catch(_) {}
+        }
+
+        function restoreState() {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return;
+            let s;
+            try { s = JSON.parse(raw); } catch(_) { return; }
+
+            if (s.rotation !== undefined) {
+                state.rotation = s.rotation;
+                [0, 90, 180, 270].forEach(r => {
+                    const btn = document.getElementById(`rot-btn-${r}`);
+                    if (!btn) return;
+                    btn.classList.toggle('btn-primary', r === s.rotation);
+                    btn.classList.toggle('btn-secondary', r !== s.rotation);
+                });
+            }
+            if (s.sensorRes) {
+                state.sensorRes = s.sensorRes;
+                document.getElementById('sensor-res-label').textContent = s.sensorRes.name;
+            }
+            if (s.force43 !== undefined) {
+                state.force43 = s.force43;
+                document.getElementById('force43').checked = s.force43;
+            }
+            if (s.roi)    state.roi    = s.roi;
+            if (s.digits) state.digits = s.digits;
+            if (s.dials)  state.dials  = s.dials;
+            if (s.viewZoom) state.viewZoom = s.viewZoom;
+            if (s.targetW) { const el = document.getElementById('target_w'); if (el) el.value = s.targetW; }
+            if (s.targetH) { const el = document.getElementById('target_h'); if (el) el.value = s.targetH; }
+
+            const imageData = localStorage.getItem(IMAGE_KEY);
+            if (imageData) {
+                const img = new Image();
+                img.onload = () => {
+                    state.image = img;
+                    updateCanvas();
+                    generateOutput();
+                    renderAllDigitRows();
+                    renderAllDialRows();
+                    if (s.viewZoom && s.viewZoom !== 1) applyViewZoom(s.viewZoom);
+                    showRestoreBanner();
+                };
+                img.src = imageData;
+            } else if (s.roi || (s.digits && s.digits.length) || (s.dials && s.dials.length)) {
+                showRestoreBanner();
+            }
+        }
+
+        function showRestoreBanner() {
+            const b = document.getElementById('restore-banner');
+            if (!b) return;
+            b.style.transition = '';
+            b.style.opacity = '1';
+            setTimeout(() => { b.style.transition = 'opacity 0.8s'; b.style.opacity = '0'; }, 2500);
+        }
+
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
@@ -466,6 +529,7 @@
                 const img = new Image();
                 img.onload = () => {
                     state.image = img;
+                    try { localStorage.setItem(IMAGE_KEY, event.target.result); } catch(_) {}
                     // Auto-set Target Resolution (Respecting current rotation)
                     const dims = getTransformedDimensions();
                     document.getElementById('target_w').value = dims.w;
@@ -483,12 +547,9 @@
         }
 
         function updateImageInfo() {
-            const infoDiv = document.getElementById('image-info') || createImageInfoDiv();
-            if (state.image) {
-                infoDiv.textContent = `Image Size: ${state.image.width} x ${state.image.height}`;
-            } else {
-                infoDiv.textContent = '';
-            }
+            const infoDiv = document.getElementById('image-info');
+            if (!infoDiv) return;
+            infoDiv.textContent = state.image ? `${state.image.width} × ${state.image.height} px` : '';
         }
 
         function setSensorRes(w, h, name) {
@@ -503,19 +564,7 @@
             generateOutput();
         }
 
-        function createImageInfoDiv() {
-            const div = document.createElement('div');
-            div.id = 'image-info';
-            div.style.marginLeft = '10px';
-            div.style.fontWeight = 'bold';
-            div.style.color = '#555';
-            // Insert after file input controls
-            const controls = document.querySelector('.controls');
-            controls.appendChild(div);
-            return div;
-        }
-
-        function setRotation(deg) {
+function setRotation(deg) {
             if (isNaN(deg)) return;
             state.rotation = deg;
 
@@ -525,6 +574,14 @@
             if (input) input.value = deg;
             const warning = document.getElementById('rot-warning');
             if (warning) warning.style.display = isCustom ? 'block' : 'none';
+
+            // Highlight active rotation button
+            [0, 90, 180, 270].forEach(r => {
+                const btn = document.getElementById(`rot-btn-${r}`);
+                if (!btn) return;
+                btn.classList.toggle('btn-primary', r === deg);
+                btn.classList.toggle('btn-secondary', r !== deg);
+            });
 
             // When rotation changes, ROI and Digits are invalid visually unless we map them.
             // For simplicity in this tool, we CLEAR them to avoid confusion, 
@@ -647,6 +704,7 @@
             if (mode === 'roi') status.textContent = "Active Mode: Camera ROI (Blue)";
             else if (mode === 'digits') status.textContent = "Active Mode: Digit Zones (Green)";
             else if (mode === 'analog') status.textContent = "Active Mode: Analog Dials (Orange)";
+            else if (mode === 'results') status.textContent = "Results — copy YAML to your ESPHome config";
 
             // Update Help Sidebar
             updateHelp(mode);
@@ -669,6 +727,9 @@
             hide('card-actions-roi');
             hide('card-actions-digits');
             hide('card-actions-analog');
+            hide('card-results');
+            const canvasSection = document.getElementById('canvas-section');
+            if (canvasSection) canvasSection.style.display = '';
 
             if (mode === 'roi') {
                 show('card-sensor-settings');
@@ -683,12 +744,18 @@
                 show('card-target-res');
                 show('card-dial-edit');
                 show('card-actions-analog');
+            } else if (mode === 'results') {
+                show('card-results');
+                if (canvasSection) canvasSection.style.display = 'none';
+                generateOutput();
+                return;
             }
 
             updateCanvas(); // canvas dimensions must be set before zoom calculation
             if (mode === 'digits' || mode === 'analog') zoomToROI();
             else resetView();
             if (mode === 'digits') renderAllDigitRows();
+            if (mode === 'analog') renderAllDialRows();
         }
 
         // ... (Rest of existing JS functions) ...
@@ -745,21 +812,9 @@
                 ctx.fill('evenodd');
                 */
 
-                // Sync Manual Inputs to Visual ROI
-                if (!state.isManualUpdate) {
-                    document.getElementById('manual_x').value = state.roi.x;
-                    document.getElementById('manual_y').value = state.roi.y;
-                    document.getElementById('manual_w').value = state.roi.w;
-                    document.getElementById('manual_h').value = state.roi.h;
-                }
+                if (!state.isManualUpdate) renderROIRow();
             } else {
-                // Clear inputs if no ROI
-                if (!state.isManualUpdate) {
-                    document.getElementById('manual_x').value = "";
-                    document.getElementById('manual_y').value = "";
-                    document.getElementById('manual_w').value = "";
-                    document.getElementById('manual_h').value = "";
-                }
+                if (!state.isManualUpdate) renderROIRow();
             }
 
             // Draw Digits
@@ -1095,6 +1150,7 @@
 
             globalsTA.value = globalsLines.join('\n');
             cameraTA.value = cameraLines.join('\n');
+            saveState();
         }
 
         // Interaction
@@ -1125,15 +1181,12 @@
                 for (let i = state.dials.length - 1; i >= 0; i--) {
                     const d = state.dials[i];
                     if (pos.x >= d.x && pos.x <= d.x + d.w && pos.y >= d.y && pos.y <= d.y + d.h) {
-                        state.selectedDialIndex = i;
-                        syncDialEditInputs();
-                        showDialEditFields(true);
+                        highlightDialRow(i);
                         updateCanvas();
                         return;
                     }
                 }
-                state.selectedDialIndex = -1;
-                showDialEditFields(false);
+                highlightDialRow(-1);
             }
 
             state.isDrawing = true;
@@ -1209,6 +1262,7 @@
             } else if (state.mode === 'analog') {
                 if (checkOutsideROI(x, y, w, h, 'Dial')) return;
                 state.dials.push({ x: x, y: y, w: w, h: h });
+                renderAllDialRows();
             }
 
             updateCanvas();
@@ -1218,7 +1272,7 @@
         function resetCurrent() {
             if (state.mode === 'roi') state.roi = null;
             if (state.mode === 'digits') { state.digits.pop(); renderAllDigitRows(); }
-            if (state.mode === 'analog') state.dials.pop();
+            if (state.mode === 'analog') { state.dials.pop(); renderAllDialRows(); }
             updateCanvas();
             generateOutput();
         }
@@ -1228,6 +1282,7 @@
             state.digits = [];
             state.dials = [];
             renderAllDigitRows();
+            renderAllDialRows();
             updateCanvas();
             generateOutput();
         }
@@ -1291,6 +1346,53 @@
             return { x, y, w, h };
         }
 
+        function renderROIRow() {
+            const container = document.getElementById('roi-row-container');
+            if (!container) return;
+            if (!state.roi) {
+                container.innerHTML = '<p style="color:#999;font-size:0.85em;margin:0;">Draw an ROI on the canvas.</p>';
+                return;
+            }
+            const r = state.roi;
+            const header = '<div style="display:flex;gap:2px;font-size:0.75em;color:#999;margin-bottom:2px;">' +
+                '<span style="width:32px;"></span>' +
+                '<span style="width:50px;text-align:center;">X</span>' +
+                '<span style="width:50px;text-align:center;">Y</span>' +
+                '<span style="width:50px;text-align:center;">W</span>' +
+                '<span style="width:50px;text-align:center;">H</span></div>';
+            const row = '<div class="zone-row" style="display:flex;align-items:center;gap:2px;">' +
+                '<span style="font-size:0.78em;color:#3498db;font-weight:bold;width:32px;flex-shrink:0;text-align:right;padding-right:3px;">ROI</span>' +
+                `<input type="number" id="manual_x" value="${Math.round(r.x)}" oninput="updateROIRow()">` +
+                `<input type="number" id="manual_y" value="${Math.round(r.y)}" oninput="updateROIRow()">` +
+                `<input type="number" id="manual_w" value="${Math.round(r.w)}" oninput="updateROIRow()">` +
+                `<input type="number" id="manual_h" value="${Math.round(r.h)}" oninput="updateROIRow()">` +
+                '<button onclick="clearROI()" title="Clear ROI" ' +
+                'style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:1px 4px;font-size:1em;flex-shrink:0;line-height:1;">&#x2715;</button>' +
+                '</div>';
+            container.innerHTML = header + row;
+        }
+
+        function clearROI() {
+            if (!confirm('Clear the ROI?')) return;
+            state.roi = null;
+            renderROIRow();
+            updateCanvas();
+            generateOutput();
+        }
+
+        function updateROIRow() {
+            const x = parseInt(document.getElementById('manual_x').value);
+            const y = parseInt(document.getElementById('manual_y').value);
+            const w = parseInt(document.getElementById('manual_w').value);
+            const h = parseInt(document.getElementById('manual_h').value);
+            if ([x, y, w, h].some(isNaN) || w < 1 || h < 1) return;
+            state.roi = { x, y, w, h };
+            state.isManualUpdate = true;
+            updateCanvas();
+            generateOutput();
+            state.isManualUpdate = false;
+        }
+
         function updateROIFromInput() {
             if (!state.image) return;
             // Inputs are SENSOR coordinates
@@ -1347,13 +1449,15 @@
             state.digits.forEach((d, i) => {
                 const sel = (i === state.selectedDigitIndex);
                 const bg = sel ? 'background:#e8f8ef;border-radius:3px;' : '';
-                html += `<div id="drow-${i}" style="display:flex;align-items:center;gap:2px;margin-bottom:2px;${bg}padding:1px 2px;">` +
+                const vis = sel ? 'visible' : 'hidden';
+                html += `<div id="drow-${i}" class="zone-row" onclick="highlightDigitRow(${i})" style="display:flex;align-items:center;gap:2px;margin-bottom:2px;${bg}padding:1px 2px;cursor:pointer;">` +
                         `<span style="font-size:0.78em;color:#2ecc71;font-weight:bold;width:24px;flex-shrink:0;text-align:right;padding-right:3px;">#${i+1}</span>` +
-                        `<input type="number" value="${Math.round(d.x)}" oninput="updateDigitRow(${i})" style="width:50px;padding:2px;font-size:0.82em;">` +
-                        `<input type="number" value="${Math.round(d.y)}" oninput="updateDigitRow(${i})" style="width:50px;padding:2px;font-size:0.82em;">` +
-                        `<input type="number" value="${Math.round(d.w)}" oninput="updateDigitRow(${i})" style="width:50px;padding:2px;font-size:0.82em;">` +
-                        `<input type="number" value="${Math.round(d.h)}" oninput="updateDigitRow(${i})" style="width:50px;padding:2px;font-size:0.82em;">` +
-                        `<button onclick="deleteDigitRow(${i})" title="Delete zone" style="background:none;border:none;color:#e74c3c;cursor:pointer;padding:1px 4px;font-size:1em;flex-shrink:0;line-height:1;">&#x2715;</button>` +
+                        `<input type="number" value="${Math.round(d.x)}" oninput="updateDigitRow(${i})" onclick="event.stopPropagation()">` +
+                        `<input type="number" value="${Math.round(d.y)}" oninput="updateDigitRow(${i})" onclick="event.stopPropagation()">` +
+                        `<input type="number" value="${Math.round(d.w)}" oninput="updateDigitRow(${i})" onclick="event.stopPropagation()">` +
+                        `<input type="number" value="${Math.round(d.h)}" oninput="updateDigitRow(${i})" onclick="event.stopPropagation()">` +
+                        `<button onclick="event.stopPropagation();cloneDigitRow(${i})" title="Clone zone" style="visibility:${vis};background:none;border:none;color:#3498db;cursor:pointer;padding:1px 4px;font-size:1em;flex-shrink:0;line-height:1;">&#x2398;</button>` +
+                        `<button onclick="event.stopPropagation();deleteDigitRow(${i})" title="Delete zone" style="visibility:${vis};background:none;border:none;color:#e74c3c;cursor:pointer;padding:1px 4px;font-size:1em;flex-shrink:0;line-height:1;">&#x2715;</button>` +
                         `</div>`;
             });
             container.innerHTML = html;
@@ -1361,15 +1465,10 @@
 
         function highlightDigitRow(i) {
             state.selectedDigitIndex = i;
-            document.querySelectorAll('[id^="drow-"]').forEach(el => {
-                el.style.background = '';
-            });
+            renderAllDigitRows();
             if (i >= 0) {
                 const row = document.getElementById('drow-' + i);
-                if (row) {
-                    row.style.background = '#e8f8ef';
-                    row.scrollIntoView({ block: 'nearest' });
-                }
+                if (row) row.scrollIntoView({ block: 'nearest' });
             }
         }
 
@@ -1386,6 +1485,7 @@
         }
 
         function deleteDigitRow(i) {
+            if (!confirm(`Delete digit zone #${i + 1}?`)) return;
             state.digits.splice(i, 1);
             if (state.selectedDigitIndex >= state.digits.length) {
                 state.selectedDigitIndex = state.digits.length - 1;
@@ -1395,9 +1495,112 @@
             generateOutput();
         }
 
+        let _cloneTarget = null; // { list: 'digits'|'dials', index: number }
+
+        function cloneDigitRow(i) { _cloneTarget = { list: 'digits', index: i }; openCloneDialog(); }
+        function cloneDialRow(i)  { _cloneTarget = { list: 'dials',  index: i }; openCloneDialog(); }
+
+        function openCloneDialog() {
+            document.getElementById('clone-dialog').showModal();
+        }
+
+        function confirmClone() {
+            if (!_cloneTarget) return;
+            const { list, index } = _cloneTarget;
+            const arr = state[list];
+            if (index < 0 || index >= arr.length) return;
+            const count = Math.max(1, parseInt(document.getElementById('clone-count').value) || 3);
+            const gap   = Math.max(0, parseInt(document.getElementById('clone-gap').value)   || 0);
+            const src = arr[index];
+            // Clamp to ROI or canvas bounds
+            const bounds = state.roi
+                ? { x: state.roi.x, y: state.roi.y, x2: state.roi.x + state.roi.w, y2: state.roi.y + state.roi.h }
+                : { x: 0, y: 0, x2: canvas.width, y2: canvas.height };
+            const newZones = [];
+            for (let j = 1; j <= count; j++) {
+                const nx = Math.round(src.x + j * (src.w + gap));
+                if (nx + src.w > bounds.x2 || src.y + src.h > bounds.y2) break;
+                newZones.push({ x: nx, y: src.y, w: src.w, h: src.h });
+            }
+            if (newZones.length === 0) {
+                alert('No room to clone — all copies would go outside the ' + (state.roi ? 'ROI' : 'image') + ' bounds.');
+                return;
+            }
+            if (newZones.length < count) {
+                if (!confirm(`Only ${newZones.length} of ${count} copies fit within the bounds. Continue?`)) return;
+            }
+            arr.splice(index + 1, 0, ...newZones);
+            state.selectedDigitIndex = -1;
+            state.selectedDialIndex  = -1;
+            if (list === 'digits') renderAllDigitRows(); else renderAllDialRows();
+            updateCanvas();
+            generateOutput();
+            document.getElementById('clone-dialog').close();
+        }
+
         function syncDigitEditInputs() {}
         function showDigitEditFields(visible) {}
         function updateDigitFromInput() {}
+
+        function renderAllDialRows() {
+            const container = document.getElementById('dial-all-zones');
+            if (!container) return;
+            if (state.dials.length === 0) {
+                container.innerHTML = '<p style="color:#999;font-size:0.85em;margin:0;">Draw zones on the canvas.</p>';
+                return;
+            }
+            let html = '<div style="display:flex;gap:2px;font-size:0.75em;color:#999;margin-bottom:2px;">' +
+                       '<span style="width:24px;"></span>' +
+                       '<span style="width:50px;text-align:center;">X</span>' +
+                       '<span style="width:50px;text-align:center;">Y</span>' +
+                       '<span style="width:50px;text-align:center;">W</span>' +
+                       '<span style="width:50px;text-align:center;">H</span></div>';
+            state.dials.forEach((d, i) => {
+                const sel = (i === state.selectedDialIndex);
+                const bg = sel ? 'background:#fef9ec;border-radius:3px;' : '';
+                const vis = sel ? 'visible' : 'hidden';
+                html += `<div id="dirow-${i}" class="zone-row" onclick="highlightDialRow(${i})" style="display:flex;align-items:center;gap:2px;margin-bottom:2px;${bg}padding:1px 2px;cursor:pointer;">` +
+                        `<span style="font-size:0.78em;color:#f39c12;font-weight:bold;width:24px;flex-shrink:0;text-align:right;padding-right:3px;">D${i+1}</span>` +
+                        `<input type="number" value="${Math.round(d.x)}" oninput="updateDialRow(${i})" onclick="event.stopPropagation()">` +
+                        `<input type="number" value="${Math.round(d.y)}" oninput="updateDialRow(${i})" onclick="event.stopPropagation()">` +
+                        `<input type="number" value="${Math.round(d.w)}" oninput="updateDialRow(${i})" onclick="event.stopPropagation()">` +
+                        `<input type="number" value="${Math.round(d.h)}" oninput="updateDialRow(${i})" onclick="event.stopPropagation()">` +
+                        `<button onclick="event.stopPropagation();cloneDialRow(${i})" title="Clone dial" style="visibility:${vis};background:none;border:none;color:#3498db;cursor:pointer;padding:1px 4px;font-size:1em;flex-shrink:0;line-height:1;">&#x2398;</button>` +
+                        `<button onclick="event.stopPropagation();deleteDialRow(${i})" title="Delete dial" style="visibility:${vis};background:none;border:none;color:#e74c3c;cursor:pointer;padding:1px 4px;font-size:1em;flex-shrink:0;line-height:1;">&#x2715;</button>` +
+                        `</div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function highlightDialRow(i) {
+            state.selectedDialIndex = i;
+            renderAllDialRows();
+            if (i >= 0) {
+                const row = document.getElementById('dirow-' + i);
+                if (row) row.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function updateDialRow(i) {
+            if (i < 0 || i >= state.dials.length) return;
+            const row = document.getElementById('dirow-' + i);
+            if (!row) return;
+            const inputs = row.querySelectorAll('input[type="number"]');
+            const vals = [...inputs].map(inp => parseInt(inp.value));
+            if (vals.length < 4 || vals.some(isNaN) || vals[2] < 1 || vals[3] < 1) return;
+            state.dials[i] = { x: vals[0], y: vals[1], w: vals[2], h: vals[3] };
+            updateCanvas();
+            generateOutput();
+        }
+
+        function deleteDialRow(i) {
+            if (!confirm(`Delete analog dial D${i + 1}?`)) return;
+            state.dials.splice(i, 1);
+            if (state.selectedDialIndex >= state.dials.length) state.selectedDialIndex = state.dials.length - 1;
+            renderAllDialRows();
+            updateCanvas();
+            generateOutput();
+        }
 
         function syncDialEditInputs() {
             const i = state.selectedDialIndex;
@@ -1520,15 +1723,20 @@
             const widthMatch = text.match(/^\s{4}width:\s*(\d+)/m);
             const heightMatch = text.match(/^\s{4}height:\s*(\d+)/m);
 
-            if (offXMatch && offYMatch && widthMatch && heightMatch) {
-                document.getElementById('manual_x').value = parseInt(offXMatch[1]);
-                document.getElementById('manual_y').value = parseInt(offYMatch[1]);
-                document.getElementById('manual_w').value = parseInt(widthMatch[1]);
-                document.getElementById('manual_h').value = parseInt(heightMatch[1]);
-                if (state.image) updateROIFromInput();
-            } else {
-                state.roi = null;
+            // Update rotation button highlight (parseCameraSection bypasses setRotation)
+            if (rotMatch) {
+                const rot = parseInt(rotMatch[1]);
+                [0, 90, 180, 270].forEach(r => {
+                    const btn = document.getElementById(`rot-btn-${r}`);
+                    if (!btn) return;
+                    btn.classList.toggle('btn-primary', r === rot);
+                    btn.classList.toggle('btn-secondary', r !== rot);
+                });
             }
+
+            // Do NOT call updateROIFromInput here — the camera_window values may have been
+            // expanded by force-4:3 enforcement, which would inflate the user's drawn ROI.
+            // The ROI stays as-is; generateOutput() at the end of parseOutput() will re-sync.
         }
 
         function parseGlobalsSection() {
@@ -1640,6 +1848,7 @@
                     w: Math.round(vis.w), h: Math.round(vis.h)
                 });
             }
+            renderAllDialRows();
         }
 
         function parseZones() {
@@ -1657,8 +1866,29 @@
             generateOutput();
         }
 
+        restoreState();
         setMode("roi");
     </script>
+    <dialog id="clone-dialog" style="border:1px solid #ddd; border-radius:8px; padding:20px; min-width:240px;">
+        <h4 style="margin:0 0 12px 0; color:#333;">Clone Zone</h4>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;">
+            <label style="font-size:0.9em;">Count:</label>
+            <input type="number" id="clone-count" value="3" min="1" max="32" style="width:60px;padding:4px;">
+            <label style="font-size:0.9em;">Gap (px):</label>
+            <input type="number" id="clone-gap" value="0" min="0" style="width:60px;padding:4px;">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn btn-primary" onclick="confirmClone()">Clone</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('clone-dialog').close()">Cancel</button>
+        </div>
+    </dialog>
+
+    <div id="restore-banner" style="
+        position: fixed; top: 12px; right: 16px; z-index: 9999;
+        background: #2ecc71; color: #fff; padding: 8px 14px; border-radius: 6px;
+        font-size: 0.85em; opacity: 0; pointer-events: none;">
+        Settings restored from last session
+    </div>
 </body>
 
 </html>
